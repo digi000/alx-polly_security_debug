@@ -9,8 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { deletePoll } from "@/app/lib/actions/poll-actions";
-import { createClient } from "@/lib/supabase/client";
+import { getAllPolls, adminDeletePoll } from "@/app/lib/actions/admin-actions";
 
 interface Poll {
   id: string;
@@ -24,38 +23,50 @@ export default function AdminPage() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAllPolls();
   }, []);
 
   const fetchAllPolls = async () => {
-    const supabase = createClient();
-
-    const { data, error } = await supabase
-      .from("polls")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setPolls(data);
+    try {
+      const { polls: fetchedPolls, error } = await getAllPolls();
+      if (error) {
+        setError(error);
+      } else {
+        setPolls(fetchedPolls);
+      }
+    } catch (err) {
+      setError('Failed to fetch polls');
     }
     setLoading(false);
   };
 
   const handleDelete = async (pollId: string) => {
     setDeleteLoading(pollId);
-    const result = await deletePoll(pollId);
+    const result = await adminDeletePoll(pollId);
 
     if (!result.error) {
       setPolls(polls.filter((poll) => poll.id !== pollId));
+    } else {
+      setError(result.error);
     }
 
     setDeleteLoading(null);
   };
 
   if (loading) {
-    return <div className="p-6">Loading all polls...</div>;
+    return <div className="p-6">Loading admin panel...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="text-red-500 font-medium">Access Denied</div>
+        <p className="text-gray-600 mt-2">{error}</p>
+      </div>
+    );
   }
 
   return (

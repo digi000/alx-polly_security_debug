@@ -31,6 +31,9 @@ export default function VulnerableShare({
     setShareUrl(pollUrl);
   }, [pollId]);
 
+  // Sanitize poll title to prevent XSS
+  const sanitizedTitle = pollTitle.replace(/[<>\"'&]/g, '');
+
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
@@ -41,7 +44,7 @@ export default function VulnerableShare({
   };
 
   const shareOnTwitter = () => {
-    const text = encodeURIComponent(`Check out this poll: ${pollTitle}`);
+    const text = encodeURIComponent(`Check out this poll: ${sanitizedTitle}`);
     const url = encodeURIComponent(shareUrl);
     window.open(
       `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
@@ -58,7 +61,7 @@ export default function VulnerableShare({
   };
 
   const shareViaEmail = () => {
-    const subject = encodeURIComponent(`Poll: ${pollTitle}`);
+    const subject = encodeURIComponent(`Poll: ${sanitizedTitle}`);
     const body = encodeURIComponent(
       `Hi! I'd like to share this poll with you: ${shareUrl}`,
     );

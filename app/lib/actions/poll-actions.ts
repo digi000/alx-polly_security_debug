@@ -73,6 +73,56 @@ export async function getPollById(id: string) {
   return { poll: data, error: null };
 }
 
+// GET POLL WITH RESULTS
+export async function getPollWithResults(id: string) {
+  const supabase = await createClient();
+  
+  // Get poll data
+  const { data: poll, error: pollError } = await supabase
+    .from("polls")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (pollError || !poll) {
+    return { poll: null, results: null, userVote: null, error: pollError?.message || 'Poll not found' };
+  }
+
+  // Get vote counts for each option
+  const { data: votes, error: votesError } = await supabase
+    .from("votes")
+    .select("option_index")
+    .eq("poll_id", id);
+
+  if (votesError) {
+    return { poll: null, results: null, userVote: null, error: votesError.message };
+  }
+
+  // Calculate results
+  const results = poll.options.map((option: string, index: number) => ({
+    id: index,
+    text: option,
+    votes: votes?.filter(vote => vote.option_index === index).length || 0
+  }));
+
+  // Check if current user has voted
+  const { data: { user } } = await supabase.auth.getUser();
+  let userVote = null;
+  
+  if (user) {
+    const { data: userVoteData } = await supabase
+      .from("votes")
+      .select("option_index")
+      .eq("poll_id", id)
+      .eq("user_id", user.id)
+      .single();
+    
+    userVote = userVoteData?.option_index ?? null;
+  }
+
+  return { poll, results, userVote, error: null };
+}
+
 // SUBMIT VOTE
 export async function submitVote(pollId: string, optionIndex: number) {
   const supabase = await createClient();
@@ -80,13 +130,45 @@ export async function submitVote(pollId: string, optionIndex: number) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Optionally require login to vote
-  // if (!user) return { error: 'You must be logged in to vote.' };
+  // Require authentication to vote
+  if (!user) return { error: 'You must be logged in to vote.' };
+
+  // Check if user has already voted on this poll
+  const { data: existingVote, error: voteCheckError } = await supabase
+    .from("votes")
+    .select("id")
+    .eq("poll_id", pollId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (voteCheckError && voteCheckError.code !== 'PGRST116') {
+    return { error: voteCheckError.message };
+  }
+
+  if (existingVote) {
+    return { error: 'You have already voted on this poll.' };
+  }
+
+  // Verify poll exists and is active
+  const { data: poll, error: pollError } = await supabase
+    .from("polls")
+    .select("id, options")
+    .eq("id", pollId)
+    .single();
+
+  if (pollError || !poll) {
+    return { error: 'Poll not found.' };
+  }
+
+  // Verify option index is valid
+  if (optionIndex < 0 || optionIndex >= poll.options.length) {
+    return { error: 'Invalid option selected.' };
+  }
 
   const { error } = await supabase.from("votes").insert([
     {
       poll_id: pollId,
-      user_id: user?.id ?? null,
+      user_id: user.id,
       option_index: optionIndex,
     },
   ]);
